@@ -137,15 +137,35 @@ erDiagram
 
 ---
 
-## 3. 索引与性能设计策略
+## 3. 索引与级联约束策略
 
+### 3.1 索引设计
 1. **唯一性索引 (Unique Indexes)**：
    - `users(username)`、`users(email)`：保障账号全球唯一。
-   - `categories(slug)`、`series(slug)`、`posts(slug)`：保障前端 RESTful/Clean URL 的唯一性与高效定点检索。
-2. **外键与关联查询索引 (Foreign Key Indexes)**：
+   - `categories(slug)`、`series(slug)`：保障分类与专栏路由唯一。
+   - `posts(slug)`：文章友好别名唯一。采用 GORM 钩子自动兜底机制（见 3.3）。
+2. **关联与复合索引 (Compound & Foreign Key Indexes)**：
    - `posts(user_id)`：加速用户个人作品列表查询。
    - `posts(category_id)`：加速分类文章聚合。
-   - `posts(series_id, order_index)`：**复合索引**，专栏章节列表查询的核心加速点，保证专栏目录秒级渲染。
-   - `comments(post_id, created_at)`：**复合索引**，文章详情页下拉取评论时的时间正序极速扫描。
-3. **软删除策略讨论**：
-   - 当前采用物理删除与外键级联检查，未来若需防误删，可在 Post 与 Comment 上无缝接入 `gorm.DeletedAt`。
+   - `posts(series_id, order_index)`：**核心复合索引**，专栏章节列表查询的核心加速点，保证专栏目录秒级渲染。
+   - `comments(post_id, created_at)`：**核心复合索引**，文章详情页下拉取评论时的时间正序极速扫描。
+
+### 3.2 外键级联约束规则 (Cascade Rules)
+为避免误删以及保证数据引用完整性，显式定义以下 GORM 级联规则：
+- **`Post` 关联 `Category` (`category_id`)**：`OnDelete:SET NULL`
+  - *语义*：删除主题分类时，归属于该分类的文章**不得被删除**，而是将文章的 `category_id` 自动置为 `NULL`。
+- **`Post` 关联 `Series` (`series_id`)**：`OnDelete:SET NULL`
+  - *语义*：删除专栏时，专栏下的文章作为独立知识资产**予以保留**，仅将文章的 `series_id` 自动置为 `NULL`。
+- **`Comment` 关联 `Post` (`post_id`)**：`OnDelete:CASCADE`
+  - *语义*：文章被作者彻底物理删除时，附属于该文章的所有评论**自动级联清除**。
+- **`Post` / `Series` 关联 `User` (`user_id`)**：`OnDelete:CASCADE` 或禁止物理删除用户
+  - *语义*：账号销毁时级联清理，或在业务层仅允许逻辑冻结。
+
+### 3.3 Slug 自动生成与冲突防范策略 (Slug Collision Avoidance)
+由于作业基线与简易 API 仅要求传递 `title` 与 `content`：
+- 若前端/调用方未显式传入 `slug`：
+  - GORM `BeforeCreate` Hook 自动检测：若 `slug == ""`，则通过拼音/英文清洗 `title`，并追加短随机串或时间戳哈希（例如 `my-first-post-7a9f`），确保绝对不写入空字符串。
+- 该机制彻底避免了多篇无 slug 文章在数据库 `UNIQUE` 索引上触发键值冲突。
+
+### 3.4 软删除策略讨论
+- 当前基线采用物理删除配合级联约束。未来若需审计与防误删，可在 `Post` 与 `Comment` 上无缝引入 `gorm.DeletedAt`。
