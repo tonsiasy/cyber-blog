@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/tonsiasy/cyber-blog/config"
 	"github.com/tonsiasy/cyber-blog/models"
+	"github.com/tonsiasy/cyber-blog/routes"
 )
 
 func main() {
@@ -35,6 +36,9 @@ func main() {
 			"time":    time.Now().Format(time.RFC3339),
 		})
 	})
+
+	// 6. 注册业务 API 路由
+	routes.SetupRouter(r, cfg)
 
 	// 6. 监听端口并启动 HTTP 服务
 	addr := ":" + cfg.Server.Port
