@@ -27,6 +27,9 @@ cyber-blog
 .DS_Store
 Thumbs.db
 
+# Local Uploads
+uploads/
+
 # IDE files
 .idea/
 .vscode/
