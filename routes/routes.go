@@ -41,7 +41,24 @@ func SetupRouter(r *gin.Engine, cfg *config.Config) {
 		protectedPosts.POST("/:id/comments", commentHandler.Create)
 	}
 
-	// 3. 课程大作业路由向前兼容 (/api/...)
+	// 3. 主题分类路由组 (/api/v1/categories/*)
+	taxonomyHandler := handlers.NewTaxonomyHandler(cfg)
+	categoriesGroup := apiV1.Group("/categories")
+	{
+		categoriesGroup.GET("", taxonomyHandler.ListCategories)
+		categoriesGroup.GET("/:slug/posts", taxonomyHandler.GetPostsByCategorySlug)
+		categoriesGroup.POST("", middleware.AuthRequired(cfg), taxonomyHandler.CreateCategory)
+	}
+
+	// 4. 系列专栏路由组 (/api/v1/series/*)
+	seriesGroup := apiV1.Group("/series")
+	{
+		seriesGroup.GET("", taxonomyHandler.ListSeries)
+		seriesGroup.GET("/:slug", taxonomyHandler.GetSeriesOutline)
+		seriesGroup.POST("", middleware.AuthRequired(cfg), taxonomyHandler.CreateSeries)
+	}
+
+	// 5. 课程大作业路由向前兼容 (/api/...)
 	// 确保完全符合作业文档指定的无版本前缀路径
 	legacyGroup := r.Group("/api")
 	{
