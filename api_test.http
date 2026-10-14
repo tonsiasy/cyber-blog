@@ -1,0 +1,230 @@
+### ==============================================================================
+### Cyber-Blog API Integration Test Suite (REST Client / IntelliJ HTTP)
+### ==============================================================================
+### Variables
+@baseUrl = http://localhost:8080
+@token = your_jwt_token_here
+
+### ------------------------------------------------------------------------------
+### 0. Health & Heartbeat
+### ------------------------------------------------------------------------------
+
+### 0.1 Ping Health Check
+GET {{baseUrl}}/ping
+
+### ------------------------------------------------------------------------------
+### 1. Authentication (M2)
+### ------------------------------------------------------------------------------
+
+### 1.1 Register New User
+# @name register
+POST {{baseUrl}}/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "username": "nakamoto",
+  "password": "SecurePassword123!",
+  "email": "nakamoto@bitcoin.org",
+  "bio": "Building the trustless monetary system."
+}
+
+### 1.2 Login & Obtain JWT Token
+# @name login
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "nakamoto",
+  "password": "SecurePassword123!"
+}
+
+### 1.3 Get Current User Profile (Protected)
+GET {{baseUrl}}/api/v1/auth/me
+Authorization: Bearer {{token}}
+
+### ------------------------------------------------------------------------------
+### 2. Taxonomy & Series Curation (M5)
+### ------------------------------------------------------------------------------
+
+### 2.1 Create Category (Protected)
+# @name createCategory
+POST {{baseUrl}}/api/v1/categories
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Cryptography & Zero-Knowledge",
+  "slug": "cryptography-zk",
+  "description": "Explorations in STARKs, SNARKs, and elliptic curve mathematics."
+}
+
+### 2.2 List Categories with Post Counts (Public)
+GET {{baseUrl}}/api/v1/categories
+
+### 2.3 Get Posts by Category Slug (Public)
+GET {{baseUrl}}/api/v1/categories/cryptography-zk/posts
+
+### 2.4 Create Series Column (Protected)
+# @name createSeries
+POST {{baseUrl}}/api/v1/series
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title": "Mastering Go & Distributed Systems",
+  "slug": "mastering-go-distributed",
+  "description": "From Goroutines and memory layout to Paxos and Raft consensus.",
+  "cover_image": "https://pub-xxx.r2.dev/covers/go-series.png"
+}
+
+### 2.5 List All Series (Public)
+GET {{baseUrl}}/api/v1/series
+
+### 2.6 Get Series Outline & Ordered Chapters (Public)
+GET {{baseUrl}}/api/v1/series/mastering-go-distributed
+
+### ------------------------------------------------------------------------------
+### 3. Post Management & CRUD (M3)
+### ------------------------------------------------------------------------------
+
+### 3.1 Create Post Chapter 1 in Series (Protected)
+# @name createPost1
+POST {{baseUrl}}/api/v1/posts
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title": "Chapter 1: Memory Layout and Escape Analysis",
+  "slug": "go-memory-escape-analysis",
+  "summary": "Deep dive into stack vs heap allocation in Go 1.27.",
+  "content": "### Memory Layout\nWhen a variable escapes to the heap...",
+  "category_id": 1,
+  "series_id": 1,
+  "order_index": 1,
+  "published": true
+}
+
+### 3.2 Create Standalone Post (Protected)
+# @name createPost2
+POST {{baseUrl}}/api/v1/posts
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title": "Understanding Zero-Knowledge Rollups",
+  "summary": "Validity proofs vs Fraud proofs explained simply.",
+  "content": "Zero-Knowledge Rollups batch multiple transactions...",
+  "category_id": 1,
+  "published": true
+}
+
+### 3.3 List Posts with Pagination (Public)
+GET {{baseUrl}}/api/v1/posts?page=1&pageSize=10
+
+### 3.4 Get Post Detail by ID (Public)
+GET {{baseUrl}}/api/v1/posts/1
+
+### 3.5 Update Post (Protected - Author Only)
+PUT {{baseUrl}}/api/v1/posts/1
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title": "Chapter 1: Memory Layout and Escape Analysis (Revised)",
+  "content": "### Memory Layout (Updated)\nExpanded benchmarks and gc flags."
+}
+
+### 3.6 Delete Post (Protected - Author Only)
+DELETE {{baseUrl}}/api/v1/posts/1
+Authorization: Bearer {{token}}
+
+### ------------------------------------------------------------------------------
+### 4. Comment Interactions (M4)
+### ------------------------------------------------------------------------------
+
+### 4.1 Post a Comment on Article (Protected)
+# @name createComment
+POST {{baseUrl}}/api/v1/posts/1/comments
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "content": "Incredible explanation! The stack allocation benchmarks are crystal clear."
+}
+
+### 4.2 List Comments for an Article (Public)
+GET {{baseUrl}}/api/v1/posts/1/comments
+
+### ------------------------------------------------------------------------------
+### 5. Media Storage & Cloudflare R2 (M6)
+### ------------------------------------------------------------------------------
+
+### 5.1 Request Presigned Upload URL (Protected)
+POST {{baseUrl}}/api/v1/media/presign
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "filename": "post-cover-banner.webp",
+  "content_type": "image/webp"
+}
+
+### 5.2 Server Direct Multipart Upload (Protected)
+POST {{baseUrl}}/api/v1/media/upload
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="sample.png"
+Content-Type: image/png
+
+< ./sample.png
+--WebAppBoundary--
+
+### ------------------------------------------------------------------------------
+### 6. Course Homework Backward Compatibility Routes (/api/*)
+### ------------------------------------------------------------------------------
+
+### 6.1 Legacy Register
+POST {{baseUrl}}/api/register
+Content-Type: application/json
+
+{
+  "username": "student_01",
+  "password": "Password123!",
+  "email": "student01@school.edu"
+}
+
+### 6.2 Legacy Login
+POST {{baseUrl}}/api/login
+Content-Type: application/json
+
+{
+  "username": "student_01",
+  "password": "Password123!"
+}
+
+### 6.3 Legacy List Posts
+GET {{baseUrl}}/api/posts
+
+### 6.4 Legacy Create Post (Protected)
+POST {{baseUrl}}/api/posts
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title": "Legacy Post from Homework Route",
+  "content": "Content submitted via legacy /api/posts route."
+}
+
+### 6.5 Legacy List Comments
+GET {{baseUrl}}/api/posts/1/comments
+
+### 6.6 Legacy Create Comment (Protected)
+POST {{baseUrl}}/api/posts/1/comments
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "content": "Comment submitted via legacy /api/posts/1/comments."
+}
