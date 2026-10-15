@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cyber-Blog 登录验证与 bcrypt/JWT 时序图</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      margin: 0;
+      padding: 30px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .container {
+      max-width: 1100px;
+      width: 100%;
+      background: #1e293b;
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    }
+    h1 {
+      color: #38bdf8;
+      margin-top: 0;
+      font-size: 24px;
+      border-bottom: 1px solid #334155;
+      padding-bottom: 15px;
+    }
+    p {
+      color: #94a3b8;
+      line-height: 1.6;
+    }
+    .mermaid-box {
+      background: #0f172a;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+      border: 1px solid #334155;
+      overflow-x: auto;
+    }
+    .legend {
+      margin-top: 25px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 15px;
+    }
+    .card {
+      background: #334155;
+      padding: 15px;
+      border-radius: 6px;
+      border-left: 4px solid #38bdf8;
+    }
+    .card h3 {
+      margin: 0 0 8px 0;
+      font-size: 15px;
+      color: #f1f5f9;
+    }
+    .card p {
+      margin: 0;
+      font-size: 13px;
+      color: #cbd5e1;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🌐 Cyber-Blog 登录身份核验与时序流转图</h1>
+    <p>展示从客户端发送明文凭据、数据库防枚举检索、bcrypt 提取 Salt/Cost 执行恒定时间核验，到最终签发 JWT 令牌的完整执行拓扑。</p>
+
+    <div class="mermaid-box">
+      <div class="mermaid">
+sequenceDiagram
+    autonumber
+    actor Client as 客户端 (Web / App / Postman)
+    participant Handler as AuthHandler (路由层)
+    participant DB as 数据库 (PostgreSQL / SQLite)
+    participant Bcrypt as bcrypt 密码学引擎
+    participant JWT as JWT 工具库 (jwt/v5)
+
+    Client->>Handler: POST /api/v1/auth/login<br/>{ "username": "nakamoto", "password": "MyPassword123!" }
+    
+    Note over Handler: 1. 参数绑定与格式校验 (ShouldBindJSON)
+    alt JSON 参数缺失或格式错误
+        Handler-->>Client: HTTP 400 Bad Request
+    end
+
+    Handler->>DB: 2. SELECT * FROM users WHERE username = 'nakamoto' LIMIT 1
+    
+    alt 用户名不存在 (ErrRecordNotFound)
+        DB-->>Handler: 0 记录
+        Note over Handler: 安全原则：统一模糊提示，防用户名枚举
+        Handler-->>Client: HTTP 401 Unauthorized ("用户名或密码错误")
+    else 查到对应用户记录
+        DB-->>Handler: 返回完整 User 对象 (含数据库存储的 bcrypt 密文字符串)
+    end
+
+    Note over Handler,Bcrypt: 3. 进入密码核验环节 (CheckPassword)
+    Handler->>Bcrypt: bcrypt.CompareHashAndPassword(storedHash, inputPassword)
+    
+    Note over Bcrypt: ① 从 storedHash 头部提取算法版本、Cost (轮次) 与 128位 Salt<br/>② 用提取出的 Salt 对 inputPassword 重跑 2^10 次慢哈希计算<br/>③ 恒定时间 (Constant-Time) 逐字节比对两份密文摘要
+
+    alt 密码不匹配 (密文摘要不一致)
+        Bcrypt-->>Handler: 返回错误 (ErrMismatchedHashAndPassword)
+        Handler-->>Client: HTTP 401 Unauthorized ("用户名或密码错误")
+    else 密码完全正确
+        Bcrypt-->>Handler: 返回 nil (核验通过)
+    end
+
+    Note over Handler,JWT: 4. 生成无状态令牌 (GenerateToken)
+    Handler->>JWT: GenerateToken(user.ID, user.Username, secret, 72h)
+    Note over JWT: 组装 Claims (user_id, username, exp) 并通过 HMAC-SHA256 私钥加签
+    JWT-->>Handler: 返回签名的 JWT 字符串
+
+    Handler-->>Client: HTTP 200 OK<br/>{ "token": "eyJhbGciOi...", "user": { "id": 1, "username": "nakamoto" } }
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="card">
+        <h3>1. 防账号枚举</h3>
+        <p>无论查无此人还是密码不符，一律统一响应 401 "用户名或密码错误"，避免暴露已注册账号。</p>
+      </div>
+      <div class="card">
+        <h3>2. 自包含 Salt 提取</h3>
+        <p>bcrypt 不需要独立建表存盐，在字符串头部直接解析出 128 位随机 Salt 与 Cost。</p>
+      </div>
+      <div class="card">
+        <h3>3. 恒定时间盲态比对</h3>
+        <p>内部采用 constant-time comparison 逐字节比对，耗时恒定，杜绝网络时间侧信道攻击。</p>
+      </div>
+      <div class="card">
+        <h3>4. 无状态 JWT 签发</h3>
+        <p>使用 jwt/v5 签发带 72 小时有效期的 Bearer Token，后续文章管理完全无状态放行。</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'dark',
+      sequence: {
+        mirrorActors: false,
+        useMaxWidth: true
+      }
+    });
+  </script>
+</body>
+</html>
